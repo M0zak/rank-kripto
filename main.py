@@ -40,7 +40,6 @@ def get_binance_data(symbol):
 
 # Hitung skor otomatis
 def generate_checklist(symbol, cg_data, binance_data, fear_greed):
-    # Data utama
     market_cap = cg_data['market_data']['market_cap']['usd']
     volume_24h = cg_data['market_data']['total_volume']['usd']
     high_24h = cg_data['market_data']['high_24h']['usd']
@@ -54,28 +53,19 @@ def generate_checklist(symbol, cg_data, binance_data, fear_greed):
 
     # ==== SKOR OTOMATIS ====
     skor = {}
-    # Fundamental (dummy kuat)
     skor['Fundamental'] = 15
-    # Use Case
     skor['Use Case'] = 10
-    # Tokenomics (deflasi kalau supply terbatas)
     skor['Tokenomics'] = 10 if cg_data['market_data']['max_supply'] else 7
-    # Adopsi & Kemitraan (pakai volume & ranking)
     skor['Adopsi'] = 10 if dominance <= 10 else 7
-    # Keamanan (dummy aman)
     skor['Keamanan'] = 10
-    # Likuiditas
     skor['Likuiditas'] = 15 if ratio >= 3 else 10
-    # Volatilitas
     if volatility <= 3:
         skor['Volatilitas'] = 10
     elif volatility <= 7:
         skor['Volatilitas'] = 8
     else:
         skor['Volatilitas'] = 5
-    # Support/Resistance (dummy valid)
     skor['SupportResistance'] = 4
-    # Sentimen Pasar
     if fear_greed is None:
         skor['Sentimen'] = 3
     elif fear_greed >= 60:
@@ -84,9 +74,7 @@ def generate_checklist(symbol, cg_data, binance_data, fear_greed):
         skor['Sentimen'] = 3
     else:
         skor['Sentimen'] = 2
-    # Kompetisi
     skor['Kompetisi'] = 4 if dominance <= 10 else 3
-    # Market Cap Ratio
     skor['MarketCapRatio'] = 5 if ratio >= 3 else 3
 
     total_skor = sum(skor.values())
@@ -108,23 +96,23 @@ def generate_checklist(symbol, cg_data, binance_data, fear_greed):
         else:
             return f"${val:,.0f}"
 
-    # Output
+    # Output dengan emoji indikator
     output = f"""
 ✅ Checklist Penilaian {symbol.upper()} ({cg_data['name']})
 📅 Tanggal: {datetime.now().strftime("%d/%m/%Y")}
 
-🔹 Fundamental: Kuat ({skor['Fundamental']}/15)
-🔹 Use Case & Utility: {', '.join(cg_data.get('categories', ['Tidak ada data']))} ({skor['Use Case']}/10)
-🔹 Tokenomics: {"Supply terbatas" if cg_data['market_data']['max_supply'] else "Inflasi"} ({skor['Tokenomics']}/10)
-🔹 Adopsi & Kemitraan: {'Sangat luas' if skor['Adopsi']==10 else 'Sedang'} ({skor['Adopsi']}/10)
-🔹 Keamanan & Audit: Aman ({skor['Keamanan']}/10)
-🔹 Likuiditas: Volume 24h {fmt_money(volume_24h)} → {'Sangat tinggi' if skor['Likuiditas']==15 else 'Sedang'} ({skor['Likuiditas']}/15)
-🔹 Volatilitas: {volatility:.2f}% → {'Stabil' if skor['Volatilitas']==10 else 'Sedang' if skor['Volatilitas']==8 else 'Tinggi'} ({skor['Volatilitas']}/10)
-🔹 Support/Resistance: ${low_24h:,.0f} / ${high_24h:,.0f} ({skor['SupportResistance']}/5)
-🔹 Sentimen Pasar: {f'Indeks = {fear_greed}' if fear_greed is not None else 'Tidak ada data'} ({skor['Sentimen']}/5)
-🔹 Kompetisi: Dominasi #{dominance} ({skor['Kompetisi']}/5)
-🔹 Market Cap: {fmt_money(market_cap)} (Mega Cap) ({skor['MarketCapRatio']}/5)
-🔹 Volume/Market Cap Ratio: {ratio:.2f}% → {'Aktivitas Sehat' if skor['MarketCapRatio']==5 else 'Aktivitas Rendah'}
+🛠️ Fundamental: Kuat ({skor['Fundamental']}/15)
+💡 Use Case & Utility: {', '.join(cg_data.get('categories', ['Tidak ada data']))} ({skor['Use Case']}/10)
+📊 Tokenomics: {"Supply terbatas" if cg_data['market_data']['max_supply'] else "Inflasi"} ({skor['Tokenomics']}/10)
+🌍 Adopsi & Kemitraan: {'Sangat luas' if skor['Adopsi']==10 else 'Sedang'} ({skor['Adopsi']}/10)
+🛡️ Keamanan & Audit: Aman ({skor['Keamanan']}/10)
+💱 Likuiditas: Volume 24h {fmt_money(volume_24h)} → {'Sangat tinggi' if skor['Likuiditas']==15 else 'Sedang'} ({skor['Likuiditas']}/15)
+📉 Volatilitas: {volatility:.2f}% → {'Stabil' if skor['Volatilitas']==10 else 'Sedang' if skor['Volatilitas']==8 else 'Tinggi'} ({skor['Volatilitas']}/10)
+📈 Support/Resistance: ${low_24h:,.0f} / ${high_24h:,.0f} ({skor['SupportResistance']}/5)
+📰 Sentimen Pasar: {f'Indeks = {fear_greed}' if fear_greed is not None else 'Tidak ada data'} ({skor['Sentimen']}/5)
+⚔️ Kompetisi: Dominasi #{dominance} ({skor['Kompetisi']}/5)
+🏦 Market Cap: {fmt_money(market_cap)} (Mega Cap) ({skor['MarketCapRatio']}/5)
+🔄 Volume/Market Cap Ratio: {ratio:.2f}% → {'Aktivitas Sehat' if skor['MarketCapRatio']==5 else 'Aktivitas Rendah'}
 
 🏆 **Skor Akhir: {total_skor}/100**
 {kategori}
