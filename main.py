@@ -6,11 +6,11 @@ from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 
-# ==== KONFIGURASI API KEY ====
+# ==== API KEYS ====
 ETHERSCAN_API_KEY = "GYU78JKH6V2IM7PHNTFFT3H4VU8NW9KC2R"
 CRYPTOPANIC_API_KEY = "15840a09ec6bff979ba9e92500e2d35eb61f0c65"
 
-# ==== URL API ====
+# ==== API URLs ====
 COINGECKO = "https://api.coingecko.com/api/v3"
 FEAR_GREED = "https://api.alternative.me/fng/"
 ETHERSCAN_API = "https://api.etherscan.io/api"
@@ -28,13 +28,6 @@ def fmt_money(val):
         return f"${val/1_000_000:.1f}M"
     else:
         return f"${val:,.0f}"
-
-def get_fear_greed():
-    try:
-        r = requests.get(FEAR_GREED, timeout=10).json()
-        return int(r["data"][0]["value"])
-    except:
-        return None
 
 def get_coingecko(symbol):
     search = requests.get(f"{COINGECKO}/search?query={symbol}").json()
@@ -93,8 +86,8 @@ def get_certik_audit(symbol):
     except:
         return None, "No Audit"
 
-# ==== SKORING ====
-def generate_checklist(symbol, cg_data, fear_greed, support, resistance):
+# ==== SCORING ====
+def generate_checklist(symbol, cg_data, support, resistance):
     market_cap = cg_data['market_data']['market_cap']['usd']
     volume_24h = cg_data['market_data']['total_volume']['usd']
     high_24h = cg_data['market_data']['high_24h']['usd']
@@ -121,7 +114,7 @@ def generate_checklist(symbol, cg_data, fear_greed, support, resistance):
     max_supply = cg_data['market_data']['max_supply']
     skor['Tokenomics'] = 10 if max_supply else 7
 
-    # Adopsi via Etherscan/BscScan
+    # Adopsi
     contract_address = cg_data.get("platforms", {}).get("ethereum") or cg_data.get("platforms", {}).get("binance-smart-chain")
     if contract_address:
         holders = get_holders(contract_address, "bsc" if "binance" in str(cg_data["platforms"]).lower() else "eth")
@@ -129,7 +122,7 @@ def generate_checklist(symbol, cg_data, fear_greed, support, resistance):
     else:
         skor['Adopsi'] = 8
 
-    # Keamanan via CertiK
+    # Keamanan
     certik_score, audit_status = get_certik_audit(cg_data['id'])
     if audit_status == "Audit Completed":
         skor['Keamanan'] = 10 if certik_score and certik_score >= 80 else 8 if certik_score and certik_score >= 60 else 6
@@ -145,7 +138,7 @@ def generate_checklist(symbol, cg_data, fear_greed, support, resistance):
     # Support/Resistance
     skor['SupportResistance'] = 5 if support and resistance else 3
 
-    # Sentimen via CryptoPanic
+    # Sentimen
     sent_data = get_sentiment_from_cryptopanic(symbol)
     if sent_data:
         positive, negative = sent_data
@@ -162,34 +155,15 @@ def generate_checklist(symbol, cg_data, fear_greed, support, resistance):
 
     total_skor = sum(skor.values())
 
-    # Penentuan kategori & alasan
     if total_skor >= 80:
         kategori = "🟢 **Layak Investasi Jangka Panjang**"
         alasan = "Proyek ini memiliki fundamental, adopsi, dan likuiditas yang sangat kuat, cocok untuk strategi hold jangka panjang."
     elif total_skor >= 60:
         kategori = "🟡 **Layak Trading Jangka Pendek**"
-        alasan = "Beberapa faktor seperti adopsi, likuiditas, keamanan, atau sentimen pasar belum maksimal. Lebih aman untuk strategi jangka pendek."
+        alasan = "Beberapa faktor seperti adopsi, likuiditas, keamanan, atau sentimen pasar belum maksimal."
     else:
         kategori = "🔴 **Risiko Tinggi**"
-        alasan = "Proyek ini memiliki kelemahan signifikan pada fundamental, likuiditas, atau keamanan. Potensi rugi tinggi jika tidak dikelola dengan hati-hati."
-
-    # Identifikasi faktor lemah
-    faktor_lemah = []
-    if skor['Fundamental'] < 10:
-        faktor_lemah.append("Fundamental")
-    if skor['Adopsi'] < 8:
-        faktor_lemah.append("Adopsi & Kemitraan")
-    if skor['Likuiditas'] < 10:
-        faktor_lemah.append("Likuiditas")
-    if skor['Volatilitas'] < 8:
-        faktor_lemah.append("Volatilitas")
-    if skor['Keamanan'] < 8:
-        faktor_lemah.append("Keamanan & Audit")
-    if skor['Sentimen'] < 4:
-        faktor_lemah.append("Sentimen Pasar")
-
-    if faktor_lemah:
-        alasan += f"\n📉 Faktor yang perlu diperhatikan: {', '.join(faktor_lemah)}."
+        alasan = "Proyek ini memiliki kelemahan signifikan pada fundamental, likuiditas, atau keamanan."
 
     output = f"""
 ✅ Checklist Penilaian {symbol.upper()} ({cg_data['name']})
@@ -212,9 +186,9 @@ def generate_checklist(symbol, cg_data, fear_greed, support, resistance):
 {kategori}
 💬 {alasan}
 """
-    return output, skor
+    return output, skor, volatility, market_cap, volume_24h, ratio
 
-# ==== HANDLERS TELEGRAM ====
+# ==== HANDLERS ====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Masukkan simbol crypto (contoh: BTC, ETH, SOL)")
 
@@ -225,28 +199,51 @@ async def handle_symbol(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Data tidak ditemukan.")
         return
 
-    fear_greed = get_fear_greed()
     support, resistance = get_support_resistance(cg_data['id'])
+    checklist, skor, volatility, market_cap, volume_24h, ratio = generate_checklist(symbol, cg_data, support, resistance)
 
-    checklist, skor = generate_checklist(symbol, cg_data, fear_greed, support, resistance)
-
-    keyboard = [[InlineKeyboardButton("📄 Lihat Penjelasan", callback_data="explain")]]
     context.user_data.update({
         'last_symbol': symbol,
         'cg_data': cg_data,
         'skor': skor,
-        'fear_greed': fear_greed,
         'support': support,
-        'resistance': resistance
+        'resistance': resistance,
+        'volatility': volatility,
+        'market_cap': market_cap,
+        'volume_24h': volume_24h,
+        'ratio': ratio
     })
+
+    keyboard = [[InlineKeyboardButton("📄 Lihat Penjelasan", callback_data="explain")]]
     await update.message.reply_text(checklist, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
     if query.data == "explain":
-        symbol = context.user_data['last_symbol']
-        await query.message.reply_text("📄 Penjelasan detail akan disini (fitur sama seperti sebelumnya).")
+        s = context.user_data['skor']
+        cg_data = context.user_data['cg_data']
+        support = context.user_data['support']
+        resistance = context.user_data['resistance']
+        volatility = context.user_data['volatility']
+        ratio = context.user_data['ratio']
+
+        penjelasan = f"""
+📄 Penjelasan Penilaian {context.user_data['last_symbol'].upper()} ({cg_data['name']})
+1. Fundamental ({s['Fundamental']}/15) → Berdasarkan umur proyek sejak {cg_data.get('genesis_date','-')}.
+2. Use Case ({s['UseCase']}/10) → {', '.join(cg_data.get('categories', ['Tidak ada data']))}.
+3. Tokenomics ({s['Tokenomics']}/10) → {"Supply terbatas" if cg_data['market_data']['max_supply'] else "Inflasi"}.
+4. Adopsi ({s['Adopsi']}/10) → Berdasarkan jumlah holder dari blockchain explorer.
+5. Keamanan ({s['Keamanan']}/10) → Berdasarkan audit CertiK.
+6. Likuiditas ({s['Likuiditas']}/15) → Volume/MarketCap ratio = {ratio:.2f}%.
+7. Volatilitas ({s['Volatilitas']}/10) → Range harga 24 jam sekitar {volatility:.2f}%.
+8. Support/Resistance ({s['SupportResistance']}/5) → Support: ${support:,.2f}, Resistance: ${resistance:,.2f}.
+9. Sentimen ({s['Sentimen']}/5) → Berdasarkan berita CryptoPanic.
+10. Kompetisi ({s['Kompetisi']}/5) → Berdasarkan ranking market cap.
+11. Market Cap Ratio ({s['MarketCapRatio']}/5) → Aktivitas perdagangan sehat.
+"""
+        await query.message.reply_text(penjelasan)
 
 # ==== MAIN ====
 if __name__ == "__main__":
